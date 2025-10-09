@@ -113,7 +113,7 @@ async function cacheFileOnChange(event) {
 
   // File size validation (Max 10MB)
   if (file.size > 10 * 1024 * 1024) {
-    showError("proof-of-submission", "File size must not exceed 10MB. 🙅‍♂️");
+    showError("attach-acknowledgement", "File size must not exceed 10MB. 🙅‍♂️");
     cachedFile = null; 
     cachedBase64 = null;
     fileInput.value = ""; 
@@ -141,12 +141,12 @@ async function cacheFileOnChange(event) {
     // Simulate a slight delay for better UX and hide buffer
     await new Promise((res) => setTimeout(res, 1000));
     hideUploadBuffer();
-    // Removed: showError("proof-of-submission", `File '${file.name}' ready for submission.`);
+    // Removed: showError("attach-acknowledgement", `File '${file.name}' ready for submission.`);
     
   } catch (err) {
     console.error("Error caching file:", err);
     hideUploadBuffer();
-    showError("proof-of-submission", "Failed to read file. Please try a smaller file or a different format.");
+    showError("attach-acknowledgement", "Failed to read file. Please try a smaller file or a different format.");
     cachedFile = null;
     cachedBase64 = null;
     fileInput.value = "";
@@ -220,7 +220,7 @@ async function update_record(event) {
   }
 
   if (!cachedFile || !cachedBase64) {
-    showError("proof-of-submission", "Please upload the Proof of Submission file first.");
+    showError("attach-acknowledgement", "Please upload the Attach Acknowledgement email from FTA first.");
     hasError = true;
   }
 
@@ -282,7 +282,7 @@ async function update_record(event) {
 // --- Event Listeners and Initialization ---
 
 // Listener for file input change to cache the file
-document.getElementById("proof-of-submission").addEventListener("change", cacheFileOnChange);
+document.getElementById("attach-acknowledgement").addEventListener("change", cacheFileOnChange);
 
 // Listener for form submission to trigger validation and update logic
 document.getElementById("record-form").addEventListener("submit", update_record);
