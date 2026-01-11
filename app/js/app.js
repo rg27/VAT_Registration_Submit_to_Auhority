@@ -1,302 +1,173 @@
 let app_id, account_id;
 let cachedFile = null;
 let cachedBase64 = null;
-let legalNameTaxablePerson = ""; 
-let registered_Address = ""; 
 
-// --- Core Functions for UI/Error Management ---
+const dropZone = document.getElementById("drop-zone");
+const fileInput = document.getElementById("attach-acknowledgement");
 
-/**
- * Clears all displayed error messages on the form.
- */
-function clearErrors() {
-  document.querySelectorAll(".error-message").forEach(span => span.textContent = "");
-}
+function showModal(type, title, message) {
+  const modal = document.getElementById("custom-modal");
+  const iconSuccess = document.getElementById("modal-icon-success");
+  const iconError = document.getElementById("modal-icon-error");
+  const modalBtn = document.getElementById("modal-close");
+  
+  document.getElementById("modal-title").textContent = title;
+  document.getElementById("modal-message").textContent = message;
+  
+  modalBtn.onclick = closeModal;
 
-/**
- * Displays an error message next to a specific field.
- * @param {string} fieldId - The ID suffix of the error span (e.g., 'reference-number').
- * @param {string} message - The error message to display.
- */
-function showError(fieldId, message) {
-  const errorSpan = document.getElementById(`error-${fieldId}`);
-  if (errorSpan) errorSpan.textContent = message;
-}
-
-/**
- * Shows the file upload progress buffer/overlay.
- * @param {string} message - The message to display in the buffer.
- */
-function showUploadBuffer(message = "Caching file...") {
-  const buffer = document.getElementById("upload-buffer");
-  const title = document.getElementById("upload-title");
-  const bar = document.getElementById("upload-progress");
-  if (title) title.textContent = message;
-  if (buffer) buffer.classList.remove("hidden");
-  if (bar) {
-    // Trick to restart CSS animation (uses CSS keyframes defined in index.css)
-    bar.classList.remove("animate");
-    void bar.offsetWidth; 
-    bar.classList.add("animate");
+  if (type === "success") { 
+    iconSuccess.classList.remove("hidden"); 
+    iconError.classList.add("hidden");
+    
+    modalBtn.onclick = async () => {
+      modalBtn.disabled = true;
+      modalBtn.textContent = "Finalizing...";
+      
+      try {
+        // 1. Tell the Blueprint to move forward
+        await ZOHO.CRM.BLUEPRINT.proceed();
+        
+        // 2. Small delay to allow DB commit
+        setTimeout(() => {
+          // 3. The most reliable 'Hard Reload' for Zoho Widgets:
+          // We try the SDK method first, then force the top window location.
+          ZOHO.CRM.UI.Popup.closeReload().then(() => {
+             // Fallback: If the popup closes but page doesn't refresh
+             top.location.reload(true); 
+          }).catch(() => {
+             // Second Fallback: Force jump to the record URL
+             top.location.href = top.location.href;
+          });
+        }, 600);
+      } catch (e) {
+        console.error("Blueprint error", e);
+        ZOHO.CRM.UI.Popup.closeReload();
+      }
+    };
+  } else { 
+    iconSuccess.classList.add("hidden"); 
+    iconError.classList.remove("hidden"); 
   }
+  
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
 }
 
-/**
- * Hides the file upload progress buffer/overlay.
- */
-function hideUploadBuffer() {
+function closeModal() {
+  const modal = document.getElementById("custom-modal");
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+}
+
+function clearErrors() { document.querySelectorAll(".error-message").forEach(span => span.textContent = ""); }
+function showError(fieldId, message) { const errorSpan = document.getElementById(`error-${fieldId}`); if (errorSpan) errorSpan.textContent = message; }
+
+function showUploadBuffer(message = "Processing...") {
   const buffer = document.getElementById("upload-buffer");
-  const bar = document.getElementById("upload-progress");
-  if (buffer) buffer.classList.add("hidden");
-  if (bar) bar.classList.remove("animate");
+  document.getElementById("upload-title").textContent = message;
+  buffer.classList.remove("hidden");
 }
 
-/**
- * Closes the embedded widget and reloads the parent CRM window.
- */
-async function closeWidget() {
-  await ZOHO.CRM.UI.Popup.closeReload().catch(err => console.error("Error closing widget:", err));
-}
+function hideUploadBuffer() { document.getElementById("upload-buffer").classList.add("hidden"); }
 
-// --- Data Fetching and Caching Logic ---
+async function closeWidget() { await ZOHO.CRM.UI.Popup.closeReload().catch(err => console.error(err)); }
 
-/**
- * Executes on widget load to fetch initial data (App ID, Account ID, default field values).
- */
 ZOHO.embeddedApp.on("PageLoad", async (entity) => {
   try {
-    const entity_id = entity.EntityId;
-    const appResponse = await ZOHO.CRM.API.getRecord({
-      Entity: "Applications1",
-      approved: "both",
-      RecordID: entity_id,
-    });
-    const applicationData = appResponse.data[0];
-    app_id = applicationData.id;
-    
-    // Check for Account ID and handle if missing
-    if (!applicationData.Account_Name || !applicationData.Account_Name.id) {
-        console.error("Application record is missing a linked Account ID. Cannot proceed with data fetch.");
-        // Prevent setting account_id if null/undefined
-        // The submission logic will catch this later, but useful to log now.
-    } else {
-        account_id = applicationData.Account_Name.id;
-    }
+    const appResponse = await ZOHO.CRM.API.getRecord({ Entity: "Applications1", RecordID: entity.EntityId });
+    const appData = appResponse.data[0];
+    app_id = appData.id;
+    account_id = appData.Account_Name?.id || "";
+    const accResponse = await ZOHO.CRM.API.getRecord({ Entity: "Accounts", RecordID: account_id });
+    const accData = accResponse.data[0];
+    document.getElementById("name-of-taxable-person").value = accData.Legal_Name_of_Taxable_Person || appData.Account_Name?.name || "";
+    document.getElementById("registered-address").value = accData.Registered_Address || "";
+  } catch (err) { console.error(err); }
+});
 
-    const accountResponse = await ZOHO.CRM.API.getRecord({
-      Entity: "Accounts",
-      approved: "both",
-      RecordID: account_id,
+async function handleFile(file) {
+  clearErrors();
+  const display = document.getElementById("file-name-display");
+  if (!file) { cachedFile = null; cachedBase64 = null; display.textContent = "Click or drag & drop"; return; }
+  if (file.size > 10 * 1024 * 1024) { 
+    showModal("error", "File Too Large", "Max size is 10MB.");
+    return; 
+  }
+  display.textContent = `File: ${file.name}`;
+  try {
+    const dataUrl = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result);
+      r.onerror = rej;
+      r.readAsDataURL(file);
     });
-    const accountData = accountResponse.data[0];
-    
-    // Use existing Account data or fallback to Application data
-    legalNameTaxablePerson = accountData.Legal_Name_of_Taxable_Person || applicationData.Account_Name.name || "";
-    registered_Address = accountData.Registered_Address || "";
+    cachedFile = file;
+    cachedBase64 = dataUrl.split(',')[1];
+  } catch (err) { showModal("error", "Error", "Failed to read file."); }
+}
 
-    // Populate form fields
-    document.getElementById("name-of-taxable-person").value = legalNameTaxablePerson;
-    document.getElementById("registered-address").value = registered_Address;
-  } catch (err) {
-    console.error("Error during PageLoad data fetch:", err);
+fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
+
+dropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  dropZone.classList.add("dragover");
+});
+
+dropZone.addEventListener("dragleave", () => {
+  dropZone.classList.remove("dragover");
+});
+
+dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropZone.classList.remove("dragover");
+  const files = e.dataTransfer.files;
+  if (files.length) {
+    fileInput.files = files; 
+    handleFile(files[0]);
   }
 });
 
-/**
- * Reads the selected file into memory (Base64) and performs size validation.
- * The Base64 content is cached for later CRM upload.
- * @param {Event} event - The file input change event.
- */
-async function cacheFileOnChange(event) {
-  clearErrors();
-
-  const fileInput = event.target;
-  const file = fileInput?.files[0];
-
-  if (!file) {
-    cachedFile = null;
-    cachedBase64 = null;
-    return;
-  }
-
-  // File size validation (Max 10MB)
-  if (file.size > 10 * 1024 * 1024) {
-    showError("attach-acknowledgement", "File size must not exceed 10MB. 🙅‍♂️");
-    cachedFile = null; 
-    cachedBase64 = null;
-    fileInput.value = ""; 
-    return;
-  }
-
-  showUploadBuffer("Reading file into memory...");
-
-  try {
-    // FIX: Use readAsDataURL to get the base64 string directly, avoiding
-    // corruption issues with ArrayBuffer to Base64 conversion for large/binary files.
-    const base64DataUrl = await new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result); // result is now the data URL
-      reader.onerror = reject;
-      reader.readAsDataURL(file); // Switched to readAsDataURL
-    });
-
-    // Extract the raw Base64 string (the part after the first comma)
-    const base64 = base64DataUrl.split(',')[1];
-    
-    cachedFile = file;
-    cachedBase64 = base64;
-    
-    // Simulate a slight delay for better UX and hide buffer
-    await new Promise((res) => setTimeout(res, 1000));
-    hideUploadBuffer();
-    // Removed: showError("attach-acknowledgement", `File '${file.name}' ready for submission.`);
-    
-  } catch (err) {
-    console.error("Error caching file:", err);
-    hideUploadBuffer();
-    showError("attach-acknowledgement", "Failed to read file. Please try a smaller file or a different format.");
-    cachedFile = null;
-    cachedBase64 = null;
-    fileInput.value = "";
-  }
-}
-
-/**
- * Uploads the cached file (Base64) to the Applications1 record in CRM.
- */
-async function uploadFileToCRM() {
-  if (!cachedFile || !cachedBase64) {
-    throw new Error("No cached file found. Upload validation failed.");
-  }
-
-  showUploadBuffer("Uploading file to CRM...");
-
-  return await ZOHO.CRM.API.attachFile({
-    Entity: "Applications1",
-    RecordID: app_id,
-    File: {
-      Name: cachedFile.name,
-      Content: cachedBase64,
-    },
-  });
-}
-
-// --- Main Submission Logic ---
-
-/**
- * Handles the form submission event, performing validation and sending data to CRM.
- * This function now correctly handles the entire flow.
- * @param {Event} event - The form submit event.
- */
 async function update_record(event) {
-  event.preventDefault(); // Crucial: Stop default form submission
-
+  event.preventDefault();
   clearErrors();
-  let hasError = false;
-
-  const submitBtn = document.getElementById("submit_button_id");
-  const referenceNo = document.getElementById("reference-number")?.value.trim();
-  const taxablePerson = document.getElementById("name-of-taxable-person")?.value.trim();
-  const registeredAddress = document.getElementById("registered-address")?.value.trim();
-  const applicationDate = document.getElementById("application-date")?.value.trim();
-  const safe_account_id = account_id ? account_id.trim() : "";
-
-  // Disable button and show loading state
-  if (submitBtn) {
-    submitBtn.disabled = true;
-    submitBtn.textContent = "Submitting...";
-  }
-
-  // 1. Validation Checks
-  if (!referenceNo) {
-    showError("reference-number", "Reference Number is required.");
-    hasError = true;
-  }
-
-  if (!taxablePerson) {
-    showError("name-of-taxable-person", "Legal Name of Taxable Person is required.");
-    hasError = true;
-  }
-
-  if (!registeredAddress) {
-    showError("registered-address", "Registered Address is required.");
-    hasError = true;
-  }
-
-  if (!applicationDate) {
-    showError("application-date", "Application Date is required.");
-    hasError = true;
-  }
-
-  if (!cachedFile || !cachedBase64) {
-    showError("attach-acknowledgement", "Please upload the Attach Acknowledgement email from FTA first.");
-    hasError = true;
-  }
-
-  if (hasError) {
-    // Re-enable button and exit if validation fails
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Submit";
-    }
-    hideUploadBuffer();
+  const btn = document.getElementById("submit_button_id");
+  const ref = document.getElementById("reference-number").value.trim();
+  const name = document.getElementById("name-of-taxable-person").value.trim();
+  const addr = document.getElementById("registered-address").value.trim();
+  const date = document.getElementById("application-date").value.trim();
+  
+  if (!ref || !name || !addr || !date || !cachedFile) {
+    if(!ref) showError("reference-number", "Required");
+    if(!name) showError("name-of-taxable-person", "Required");
+    if(!addr) showError("registered-address", "Required");
+    if(!date) showError("application-date", "Required");
+    if(!cachedFile) showError("attach-acknowledgement", "Upload required");
     return;
   }
 
-  // 2. Data Submission
+  btn.disabled = true;
+  btn.textContent = "Updating...";
+  showUploadBuffer("Submitting...");
+
   try {
-    // Update Application Record
     await ZOHO.CRM.API.updateRecord({
       Entity: "Applications1",
-      APIData: {
-        id: app_id,
-        Reference_Number: referenceNo,
-        Legal_Name_of_Taxable_Person: taxablePerson,
-        Registered_Address: registeredAddress,
-        Application_Date: applicationDate
-      }
+      APIData: { id: app_id, Reference_Number: ref, Legal_Name_of_Taxable_Person: name, Registered_Address: addr, Application_Date: date }
     });
-
-        // Pass ALL required data to the Deluge function via JSON string
-    const func_name = "ta_vatr_submit_to_auth_update_account";
-    const req_data = {
-        "arguments": JSON.stringify({
-            "account_id": safe_account_id,
-            "legal_taxable_person": taxablePerson,
-            "registered_address": registeredAddress,
-        })
-    };
-    const accountResponse = await ZOHO.CRM.FUNCTIONS.execute(func_name, req_data);
-    console.log("Account Update Function Response:", accountResponse);
-
-    // Attach File
-    await uploadFileToCRM();
+    await ZOHO.CRM.FUNCTIONS.execute("ta_vatr_submit_to_auth_update_account", {
+      arguments: JSON.stringify({ account_id, legal_taxable_person: name, registered_address: addr })
+    });
+    await ZOHO.CRM.API.attachFile({ Entity: "Applications1", RecordID: app_id, File: { Name: cachedFile.name, Content: cachedBase64 } });
     hideUploadBuffer();
-
-    // 3. Blueprint Proceed and Widget Close (Success)
-    await ZOHO.CRM.BLUEPRINT.proceed();
-    await ZOHO.CRM.UI.Popup.closeReload(); 
-    
+    showModal("success", "Success!", "Record updated. Click Ok to reload.");
   } catch (err) {
-    console.error("Error on final submit or API call:", err);
+    btn.disabled = false;
+    btn.textContent = "Submit Application";
     hideUploadBuffer();
-    showError("submit_button_id", "Submission failed. Please check console for details.");
-    
-    // Re-enable button on failure
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.textContent = "Submit";
-    }
+    showModal("error", "Failed", "Check connection and try again.");
   }
 }
 
-// --- Event Listeners and Initialization ---
-
-// Listener for file input change to cache the file
-document.getElementById("attach-acknowledgement").addEventListener("change", cacheFileOnChange);
-
-// Listener for form submission to trigger validation and update logic
 document.getElementById("record-form").addEventListener("submit", update_record);
-
-// Initialize the Zoho Embedded App
 ZOHO.embeddedApp.init();
