@@ -25,21 +25,11 @@ function showModal(type, title, message) {
       modalBtn.textContent = "Finalizing...";
       
       try {
-        // 1. Tell the Blueprint to move forward
         await ZOHO.CRM.BLUEPRINT.proceed();
         
-        // 2. Small delay to allow DB commit
         setTimeout(() => {
-          // 3. The most reliable 'Hard Reload' for Zoho Widgets:
-          // We try the SDK method first, then force the top window location.
-          ZOHO.CRM.UI.Popup.closeReload().then(() => {
-             // Fallback: If the popup closes but page doesn't refresh
-             top.location.reload(true); 
-          }).catch(() => {
-             // Second Fallback: Force jump to the record URL
-             top.location.href = top.location.href;
-          });
-        }, 600);
+          window.top.location.href = window.top.location.href;
+        }, 800);
       } catch (e) {
         console.error("Blueprint error", e);
         ZOHO.CRM.UI.Popup.closeReload();
