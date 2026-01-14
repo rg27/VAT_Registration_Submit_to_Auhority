@@ -76,25 +76,32 @@ ZOHO.embeddedApp.on("PageLoad", async (entity) => {
   } catch (err) { console.error(err); }
 });
 
+// Fixed handleFile using the Perfect Code implementation
 async function handleFile(file) {
   clearErrors();
   const display = document.getElementById("file-name-display");
   if (!file) { cachedFile = null; cachedBase64 = null; display.textContent = "Click or drag & drop"; return; }
-  if (file.size > 10 * 1024 * 1024) { 
-    showModal("error", "File Too Large", "Max size is 10MB.");
+  
+  if (file.size > 20 * 1024 * 1024) { 
+    showModal("error", "File Too Large", "Max size is 20MB.");
     return; 
   }
+  
   display.textContent = `File: ${file.name}`;
+  
   try {
-    const dataUrl = await new Promise((res, rej) => {
+    const content = await new Promise((res, rej) => {
       const r = new FileReader();
       r.onload = () => res(r.result);
       r.onerror = rej;
-      r.readAsDataURL(file);
+      r.readAsArrayBuffer(file); // Switched to ArrayBuffer to prevent corruption
     });
+    
     cachedFile = file;
-    cachedBase64 = dataUrl.split(',')[1];
-  } catch (err) { showModal("error", "Error", "Failed to read file."); }
+    cachedBase64 = content;
+  } catch (err) { 
+    showModal("error", "Error", "Failed to read file."); 
+  }
 }
 
 fileInput.addEventListener("change", (e) => handleFile(e.target.files[0]));
@@ -127,7 +134,7 @@ async function update_record(event) {
   const addr = document.getElementById("registered-address").value.trim();
   const date = document.getElementById("application-date").value.trim();
   
-  if (!ref || !name || !addr || !date || !cachedFile) {
+  if (!ref || !name || !addr || !date || !cachedFile || !cachedBase64) {
     if(!ref) showError("reference-number", "Required");
     if(!name) showError("name-of-taxable-person", "Required");
     if(!addr) showError("registered-address", "Required");
@@ -145,10 +152,21 @@ async function update_record(event) {
       Entity: "Applications1",
       APIData: { id: app_id, Reference_Number: ref, Legal_Name_of_Taxable_Person: name, Registered_Address: addr, Application_Date: date }
     });
+    
     await ZOHO.CRM.FUNCTIONS.execute("ta_vatr_submit_to_auth_update_account", {
       arguments: JSON.stringify({ account_id, legal_taxable_person: name, registered_address: addr })
     });
-    await ZOHO.CRM.API.attachFile({ Entity: "Applications1", RecordID: app_id, File: { Name: cachedFile.name, Content: cachedBase64 } });
+    
+    // Attachment using clean ArrayBuffer content
+    await ZOHO.CRM.API.attachFile({ 
+        Entity: "Applications1", 
+        RecordID: app_id, 
+        File: { 
+            Name: cachedFile.name, 
+            Content: cachedBase64 
+        } 
+    });
+    
     hideUploadBuffer();
     showModal("success", "Success!", "Record updated. Click Ok to reload.");
   } catch (err) {
