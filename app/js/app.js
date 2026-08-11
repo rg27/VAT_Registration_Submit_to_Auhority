@@ -1,53 +1,59 @@
 let app_id, account_id;
 let cachedFile = null;
 let cachedBase64 = null;
+let toastTimeout;
 
 const dropZone = document.getElementById("drop-zone");
 const fileInput = document.getElementById("attach-acknowledgement");
 
-function showModal(type, title, message) {
-  const modal = document.getElementById("custom-modal");
-  const iconSuccess = document.getElementById("modal-icon-success");
-  const iconError = document.getElementById("modal-icon-error");
-  const modalBtn = document.getElementById("modal-close");
-  
-  document.getElementById("modal-title").textContent = title;
-  document.getElementById("modal-message").textContent = message;
-  
-  modalBtn.onclick = closeModal;
+function showToast(type, title, message, duration = 4000) {
+  const toast = document.getElementById("toast");
+  const iconSuccess = document.getElementById("toast-icon-success");
+  const iconError = document.getElementById("toast-icon-error");
+  const progressBar = document.getElementById("toast-progress-bar");
 
-  if (type === "success") { 
-    iconSuccess.classList.remove("hidden"); 
+  document.getElementById("toast-title").textContent = title;
+  document.getElementById("toast-message").textContent = message;
+
+  toast.classList.remove("toast-success", "toast-error", "toast-show", "toast-hide", "hidden");
+
+  if (type === "success") {
+    iconSuccess.classList.remove("hidden");
     iconError.classList.add("hidden");
-    
-    modalBtn.onclick = async () => {
-      modalBtn.disabled = true;
-      modalBtn.textContent = "Finalizing...";
-      
-      try {
-        await ZOHO.CRM.BLUEPRINT.proceed();
-        
-        setTimeout(() => {
-          window.top.location.href = window.top.location.href;
-        }, 800);
-      } catch (e) {
-        console.error("Blueprint error", e);
-        ZOHO.CRM.UI.Popup.closeReload();
-      }
-    };
-  } else { 
-    iconSuccess.classList.add("hidden"); 
-    iconError.classList.remove("hidden"); 
+    toast.classList.add("toast-success");
+  } else {
+    iconSuccess.classList.add("hidden");
+    iconError.classList.remove("hidden");
+    toast.classList.add("toast-error");
   }
-  
-  modal.classList.remove("hidden");
-  modal.classList.add("flex");
+
+  // restart slide-in animation
+  void toast.offsetWidth;
+  toast.classList.add("toast-show");
+
+  // restart progress bar animation
+  progressBar.style.animation = "none";
+  void progressBar.offsetWidth;
+  progressBar.style.animation = `toastProgress ${duration}ms linear forwards`;
+
+  clearTimeout(toastTimeout);
+  toastTimeout = setTimeout(() => {
+    toast.classList.remove("toast-show");
+    toast.classList.add("toast-hide");
+    setTimeout(() => toast.classList.add("hidden"), 300);
+  }, duration);
 }
 
-function closeModal() {
-  const modal = document.getElementById("custom-modal");
-  modal.classList.add("hidden");
-  modal.classList.remove("flex");
+async function finalizeSuccess() {
+  try {
+    await ZOHO.CRM.BLUEPRINT.proceed();
+    setTimeout(() => {
+      window.top.location.href = window.top.location.href;
+    }, 500);
+  } catch (e) {
+    console.error("Blueprint error", e);
+    ZOHO.CRM.UI.Popup.closeReload();
+  }
 }
 
 function clearErrors() { document.querySelectorAll(".error-message").forEach(span => span.textContent = ""); }
@@ -83,7 +89,7 @@ async function handleFile(file) {
   if (!file) { cachedFile = null; cachedBase64 = null; display.textContent = "Click or drag & drop"; return; }
   
   if (file.size > 20 * 1024 * 1024) { 
-    showModal("error", "File Too Large", "Max size is 20MB.");
+    showToast("error", "File Too Large", "Max size is 20MB.");
     return; 
   }
   
@@ -100,7 +106,7 @@ async function handleFile(file) {
     cachedFile = file;
     cachedBase64 = content;
   } catch (err) { 
-    showModal("error", "Error", "Failed to read file."); 
+    showToast("error", "Error", "Failed to read file."); 
   }
 }
 
@@ -168,12 +174,13 @@ async function update_record(event) {
     });
     
     hideUploadBuffer();
-    showModal("success", "Success!", "Record updated. Click Ok to reload.");
+    showToast("success", "Success!", "Record updated successfully.");
+    setTimeout(() => { finalizeSuccess(); }, 2500);
   } catch (err) {
     btn.disabled = false;
     btn.textContent = "Submit Application";
     hideUploadBuffer();
-    showModal("error", "Failed", "Check connection and try again.");
+    showToast("error", "Failed", "Check connection and try again.");
   }
 }
 

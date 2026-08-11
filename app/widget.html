@@ -60,23 +60,26 @@
 
     <button class="close-button" onclick="closeWidget()">×</button>
 
-    <div id="custom-modal" class="fixed inset-0 z-[10000] hidden items-center justify-center bg-black/50 px-4 backdrop-blur-sm">
-      <div class="w-full max-w-sm overflow-hidden rounded-2xl bg-white shadow-2xl transition-all">
-        <div class="p-6 text-center">
-          <div id="modal-icon-success" class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 hidden">
-            <svg class="h-8 w-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-          </div>
-          <div id="modal-icon-error" class="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 hidden">
-            <svg class="h-8 w-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-          </div>
-          <h3 id="modal-title" class="text-lg font-bold text-gray-900"></h3>
-          <p id="modal-message" class="mt-2 text-xs text-gray-500"></p>
-          <div class="mt-6">
-            <button id="modal-close" class="w-full rounded-xl bg-[#4A90E2] px-6 py-2 text-sm font-bold text-white hover:bg-[#357ABD]">
-              Ok
-            </button>
-          </div>
+    <!-- Toast notification (replaces the old blocking modal) -->
+    <div id="toast" class="toast hidden">
+      <div class="toast-icon-wrap">
+        <div id="toast-icon-success" class="toast-icon toast-icon-success hidden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"></path>
+          </svg>
         </div>
+        <div id="toast-icon-error" class="toast-icon toast-icon-error hidden">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"></path>
+          </svg>
+        </div>
+      </div>
+      <div class="toast-content">
+        <p id="toast-title" class="toast-title"></p>
+        <p id="toast-message" class="toast-message"></p>
+      </div>
+      <div class="toast-progress-track">
+        <div id="toast-progress-bar" class="toast-progress-bar"></div>
       </div>
     </div>
 
